@@ -1,0 +1,352 @@
+var User = require('../iBot-User');
+var Channel = require('../iBot-Channel');
+var Mode = require('../iBot-Mode.js');
+var Command = require('../iBot-Command.js');
+
+exports.mod = function(context)
+{
+	this.loaded = function (server) {
+		server.addCommand(new Command('modload', 'wow', 'modules.load', this.cmdModLoad, ['ml'], 'Load a module by name. If the optional parameter is given (regardless of its value), the module is loaded only on this server; otherwise, it is loaded on the context.', 'core'));
+		server.addCommand(new Command('modunload', 'wow', 'modules.unload', this.cmdModUnload, ['mul'], 'Unloads a module by name. If the optional parameter is given (regardless of its value), the module is unloaded only from this server; otherwise, it is unloaded from the context.', 'core'));
+		server.addCommand(new Command('modlist', '', 'modules.list', this.cmdModList, [], 'Lists modules loaded to the server from which the query was issued.', 'core'));
+		server.addCommand(new Command('modcycle', 'w', 'modules.cycle', this.cmdModCycle, ['mc'], 'Cycles a module (unloads and reloads it). (BUG: Currently, the module is reloaded to the context, not just the individual servers in which it was present before.)', 'core'));
+		
+	}.bind(this);
+	this.unloaded = function (server) {}.bind(this);
+	
+	this.$recv = function(server, prefix, opcode, params)
+	{
+		switch(opcode)
+		{
+			case '005': // RPL_ISUPPORT
+				server.fire('005', server, prefix, params.slice(1, params.length - 1), params[params.length - 1]);
+				break;
+			case '352': // RPL_WHOREPLY
+				var split = params[7].split(' ');
+				server.fire('352', server, prefix, params[1], params[2], params[3], params[4], params[5], params[6], split[0], split[1]);
+				break;
+			case '353': // RPL_NAMREPLY
+				server.fire('353', server, prefix, params[1], params[2], params[3].split(' '));
+				break;
+			case '376': // RPL_ENDOFMOTD
+				server.fire('376', server, prefix, params[1]);
+				break;
+			case 'PING':
+				server.fire('ping', server, prefix, params[0]);
+				server.send('PONG :' + params[0]);
+				break;
+			case 'PONG':
+				server.fire('pong', server, prefix, params[0], params[1]);
+				server.ponged = true;
+				break;
+			case 'PRIVMSG':
+				var words = params[1].split(' ');
+				var target = params[0];
+				if(target === server.user.nick) target = prefix.nick;
+
+				server.fire('privmsg', server, prefix, target, params[1], words);
+				break;
+			case 'JOIN':
+				server.fire('join', server, prefix, params[0]);
+				break;
+			case 'NICK':
+				server.fire('nick', server, prefix, params[0]);
+				break;
+			case 'QUIT':
+				server.fire('quit', server, prefix, params[0]);
+				break;
+			case 'PART':
+				server.fire('part', server, prefix, params[0], params[1]);
+				break;
+			case 'KICK':
+				server.fire('kick', server, prefix, params[0], params[1], params[2]);
+				break;
+			case 'MODE':
+				server.fire('mode_raw', server, prefix, params[0], params[1], params.slice(2));
+				break;
+		}
+	}
+
+	this.core$005 = function(server, prefix, options, message)
+	{
+		for(var i=0; i<options.length; ++i)
+		{
+			var parts = options[i].split('=');
+			if(typeof parts[1] === 'undefined') parts[1] = '';
+			server.isupport[parts[0]] = parts[1];
+		}
+	}
+
+	this.core$352 = function(server, prefix, channel, ident, host, serverhost, nick, extrainfo, hopcount, realname)
+	{
+		if(server.channels[channel] !== 'undefined')
+		{
+			server.users[nick].ident = ident;
+			server.users[nick].host = host;
+			server.users[nick].realname = realname;
+		}
+	}
+
+	this.core$353 = function(server, prefix, channelPrefix, channel, names)
+	{
+		var split1=['', '@%+']
+		var split2=['', 'ohv']
+		try {
+			var split1 = server.isupport.PREFIX.split(')');
+			var split2 = split1[0].split('(');
+		} catch(e) {}
+		var chan=server.getOrCreateChannel(channel);
+
+		for(var i=0; i<names.length; ++i)
+		{
+			var mode=null;
+			if(split1[1].indexOf(names[i][0]) !== -1)
+			{
+				mode=split2[1][split1[1].indexOf(names[i][0])];
+				names[i] = names[i].substr(1);
+			}
+
+			server.getOrCreateUser(names[i]).channels[channel] = server.channels[channel];
+			chan.users[names[i]] = server.users[names[i]];
+			if(mode !== null) {
+				chan._dataModeSet(names[i], new Mode(mode, names[i]));
+			}
+		}
+
+		server.send('WHO ' + channel);
+	}
+
+	this.core$privmsg = function(server, prefix, target, message, words)
+	{
+		var iscmd=(new RegExp(server.user.nick + '[\,\:]?', 'i')).test(words[0]);
+		context.log('verbose', 'core$privmsg: iscmd (based on nick regex): '+iscmd);
+		if(iscmd) {
+			words=words.slice(1);
+		} else {
+			context.log('verbose', 'core$privmsg: Performing prefix testing');
+			for(var i in server.cmdprefixes) {
+				var cmdprefix=server.cmdprefixes[i];
+				context.log('verbose', 'core$privmsg: Testing prefix '+cmdprefix+' on '+words[0]);
+				if(words[0].slice(0, cmdprefix.length) === cmdprefix) {
+					iscmd=true;
+					words[0]=words[0].substr(cmdprefix.length);
+					context.log('verbose', 'core$privmsg: Prefix testing passed on '+cmdprefix+'; words[0] is '+words[0]);
+					break;
+				}
+			}
+		}
+		context.log('verbose', 'core$privmsg: iscmd (after prefix testing): '+iscmd);
+		if(iscmd)
+		{
+			var cmd;
+			var params;
+			var chantypes='#&';
+			var obj=null;
+			try {
+				chantypes = server.isupport.CHANTYPES;
+			} catch (e) {}
+			if(chantypes.indexOf(target[0])>=0) {
+				obj=server.getOrCreateChannel(target);
+			} else {
+				obj=server.getOrCreateUser(target);
+			}
+
+			for(var i=0; i<words.length; ++i)
+			{
+				if(words[i] !== '')
+				{
+					cmd = words[i];
+					params = words.slice(i + 1);
+					break;
+				}
+			}
+
+			var paramsFiltered = params.filter(function(element, i, arr)
+			{
+				return (element !== '');
+			}); //TODO: Shlexing.
+
+			server.fire('cmdraw', server, prefix, server.getOrCreateUser(prefix.nick), obj, cmd, params);
+			server.fire('cmd', server, prefix, server.getOrCreateUser(prefix.nick), obj, cmd, paramsFiltered);
+		}
+	}
+
+	this.core$join = function(server, prefix, channel)
+	{
+		server.getOrCreateChannel(channel)._dataUserJoined(server.getOrCreateUser(prefix.nick, prefix.ident, prefix.host));
+	}
+
+	this.core$nick = function(server, prefix, nick)
+	{
+		server._dataUserNickChanged(server.getOrCreateUser(prefix.nick), nick);
+	}
+
+	this.core$quit = function(server, prefix, message)
+	{
+		server._dataUserRemoved(server.getOrCreateUser(prefix.nick));
+	}
+
+	this.core$part = function(server, prefix, channel, message)
+	{
+		server.getOrCreateChannel(channel)._dataUserParted(prefix.nick);
+	}
+
+	this.core$kick = function(server, prefix, channel, target, message)
+	{
+		server.getOrCreateChannel(channel)._dataUserParted(prefix.nick)
+	}
+
+	this.core$mode_raw = function(server, prefix, target, modestring, params)
+	{
+		var plus = true;
+		var index = 0;
+		var parts = [];
+		var chantypes='#&';
+		try {
+			parts = server.isupport.CHANMODES.split(',');
+			parts[1]=parts[1]+server.isupport.PREFIX.split(')')[0].split('(')[1];
+		} catch (e) {}
+		try {
+			chantypes = server.isupport.CHANTYPES;
+		} catch (e) {}
+		
+		var obj=null;
+		if(chantypes.indexOf(target[0])>=0) {
+			obj=server.getOrCreateChannel(target);
+		} else {
+			obj=server.getOrCreateUser(target);
+		}
+
+		for(var i=0; i<modestring.length; ++i)
+		{
+			if(modestring[i] === '+') plus = true;
+			else if(modestring[i] === '-') plus = false;
+			else
+			{
+				/*
+				 * # 0 = Mode that adds or removes a nick or address to a list. Always has a parameter.
+				 * # 1 = Mode that changes a setting and always has a parameter.
+				 * # 2 = Mode that changes a setting and only has a parameter when set.
+				 * # 3 = Mode that changes a setting and never has a parameter.
+				 */
+				
+				var section = -1;
+				for(var p=0; p<parts.length; ++p)
+				{
+					if(parts[p].indexOf(modestring[i]) !== -1)
+					{
+						section = p;
+						break;
+					}
+				}
+				if(section === -1) section = 3; // mode is either broken, a prefix mode, or we didn't get ISUPPORT ;-;
+				
+				var mode=null;
+				
+				if(section === 0 || section === 1 || (section === 2 && plus)) 
+				{
+					mode=new Mode(modestring[i], params[index++], prefix.mask);
+				} 
+				else 
+				{
+					mode=new Mode(modestring[i], null, prefix.mask);
+				}
+				if(obj !== null) {
+					obj._dataModeSet(mode, plus);
+				}
+				server.fire('mode', server, prefix, obj, plus, mode);
+			}
+		}
+	}
+
+	this.core$cmd = function(server, prefix, invoker, target, cmd, params)
+	{
+		var words=params.slice(0);
+		params.unshift(cmd);
+		server.execCommand(params, invoker, target);
+		/*switch(cmd)
+		{
+			case 'lmsrv':
+				if(server.authenticator.test(invoker, 'modules.load.server', target))
+				{
+					var result = context.loadModule(params[0], server);
+					if(result !== '')
+					{
+						target.privmsg(result);
+					}
+					else
+					{
+						target.privmsg('done');
+					}
+				}
+				break;
+			case 'lmctx':
+				if(server.authenticator.test(invoker, 'modules.load.context', target))
+				{
+					var result = context.loadModule(params[0]);
+					if(result !== '')
+					{
+						target.privmsg(result);
+					}
+					else
+					{
+						target.privmsg('done');
+					}
+				}
+				break;
+			case 'umsrv':
+				if(server.authenticator.test(invoker, 'modules.unload.server', target))
+				{
+					context.unloadModule(params[0], server);
+					target.privmsg('done');
+				}
+				break;
+			case 'umctx':
+				if(server.authenticator.test(invoker, 'modules.unload.context', target))
+				{
+					context.unloadModule(params[0], null);
+					target.privmsg('done');
+				}
+				break;
+			case 'modules':
+				if(server.authenticator.test(invoker, 'modules.list', target)) {
+					target.privmsg('Modules: ' + server.getModules(', '));
+				}
+				break;
+		}*/
+	}
+	this.cmdModLoad = function (server, invoker, target, modname, toserver) {
+		var res='';
+		if(typeof toserver === 'undefined') {
+			res=context.loadModule(modname);
+		} else {
+			res=context.loadModule(modname, server);
+		}
+		if(res === '') {
+			res='Done.';
+		}
+		target.privmsg('Module load: '+res);
+	}
+	
+	this.cmdModUnload = function (server, invoker, target, modname, toserver) {
+		if(typeof toserver === 'undefined') {
+			context.unloadModule(modname, null);
+		} else {
+			context.unloadModule(modname, server);
+		}
+		target.privmsg('Module unload: Done.');
+	}
+	
+	this.cmdModCycle = function (server, invoker, target, modname) {
+		context.unloadModule(modname, null);
+		var res=context.loadModule(modname);
+		if(res === '') {
+			res='Done.';
+		}
+		target.privmsg('Module cycle: '+res);
+	}
+	
+	this.cmdModList = function (server, invoker, target) {
+		target.privmsg('Modules on this server: '+server.getModules(','));
+	}
+}

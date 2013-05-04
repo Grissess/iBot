@@ -1,0 +1,86 @@
+module.exports = function(server, nick, ident, host, realname)
+{
+	this.server = server;
+	this.nick = nick;
+	this.ident = ident;
+	this.host = host;
+	this.realname = realname;
+
+	this.channels = {};
+	this.modes = [];
+
+	this.data = {};
+	
+	this.isChannel=false; //To distinguish from other types of objects.
+	this.isUser=true;
+	
+	this.toString = function () {
+		return '<User '+this.getMask()+' on '+this.server+'>';
+	}
+	
+	this._dataModeSet = function (mode, state) {
+		if(typeof state === 'undefined') {
+			state=true;
+		}
+		if(state) {
+			for(var i=0; i<this.modes.length; i++) {
+				if(this.modes[i].mode==mode.mode) {
+					this.modes[i]=mode;
+					return;
+				}
+			}
+			this.modes.push(mode);
+		} else {
+			for(var i=0; i<this.modes.length; i++) {
+				if(this.modes[i].mode==mode.mode) {
+					this.modes.splice(i, 1);
+					return;
+				}
+			}
+		}
+	}.bind(this);
+	
+	this.getOrCreateChannel = function (channame) {
+		if(typeof this.channels[channame] === 'undefined') {
+			this.channels[channame]=new Channel(this, channame);
+		}
+		return this.channels[channame];
+	}.bind(this);
+	
+	this.inChannel = function (channel) {
+		if(typeof channel !== 'string') {
+			channel=channel.name;
+		}
+		return (typeof this.channels[channel] !== 'undefined');
+	}
+	
+	this.getMask = function () {
+		return this.nick+'!'+this.ident+'@'+this.host;
+	}.bind(this);
+	
+	this.getPrefix = function () {
+		prefix={};
+		prefix.nick=this.nick;
+		prefix.ident=this.ident;
+		prefix.host=this.host;
+		prefix.mask=this.getMask();
+		prefix.toString = function () {
+			return '<Prefix '+this.mask+'>';
+		}.bind(prefix);
+		return prefix;
+	}
+
+	this.privmsg = function (msg) {
+		if(msg.length>512) {
+			msg='<<An oversized message was generated! If this is the result of a command, check for bugs or be more specific!>>';
+		}
+		this.server.send('PRIVMSG '+this.nick+' :'+msg);
+	}.bind(this);
+	
+	this.notice = function (msg) {
+		if(msg.length>512) {
+			msg='<<An oversized message was generated! If this is the result of a command, check for bugs or be more specific!>>';
+		}
+		this.server.send('NOTICE '+this.nick+' :'+msg);
+	}.bind(this);
+}

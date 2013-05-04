@@ -1,0 +1,30 @@
+exports.mod = function(context)
+{
+	this.loaded = function (server) {}.bind(this);
+	this.unloaded = function (server) {}.bind(this);
+	
+	this.core$cmdraw = function(server, prefix, invoker, target, cmd, params)
+	{
+		switch(cmd)
+		{
+			case 'raw':
+				if(server.authenticator.test(invoker, 'raw.raw', target))
+				{
+					server.fire('raw', server, params.join(' '));
+				}
+				break;
+			case 'rawtimed':
+				if(server.authenticator.test(invoker, 'raw.rawtimed', target))
+				{
+					server.fireTimed(params[0], undefined, 'raw', server, params.slice(1).join(' '));
+				}
+				break;
+		}
+
+	}
+
+	this.raw$raw = function(server, data)
+	{
+		server.send(data);
+	}
+}

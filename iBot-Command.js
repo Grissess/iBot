@@ -1,0 +1,209 @@
+module.exports = function(name, params, perm, callback, aliases, description, module, failSilent)
+{
+	aliases=(typeof aliases === 'undefined'?[]:aliases);
+	description=(typeof description === 'undefined'?'No description.':description);
+	module=(typeof module === 'undefined'?null:module);
+	failSilent=(typeof failSilent === 'undefined'?false:failSilent);
+	this.name=name;
+	this.params=params;
+	this.perm=perm;
+	this.callback=callback;
+	this.aliases=aliases;
+	this.description=description;
+	this.module=module;
+	this.failSilent=failSilent;
+	
+	this.arg_names={}
+	this.arg_names.w='WORD';
+	this.arg_names.i='SIGNED_INTEGER';
+	this.arg_names.I='UNSIGNED_INTEGER';
+	this.arg_names.f='FLOAT';
+	this.arg_names.c='CHANNEL';
+	this.arg_names.u='USER';
+	this.arg_names.C='KNOWN_CHANNEL';
+	this.arg_names.U='KNOWN_USER';
+	this.arg_names.s='USERS_MATCH';
+	this.arg_names.S='CHANNELS_MATCH';
+	this.arg_names.r='REST';
+	this.arg_names.o='[OPTIONAL->]';
+	
+	this.arg_tests={}
+	this.arg_tests.w=function (server, words) {
+		return [words[0], words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.i=function (server, words) {
+		return [parseInt(words[0]), words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.I=function (server, words) {
+		var ret=this.i(server, words);
+		if(ret[0]<0) {
+			throw new Error('Parameter may not be negative.');
+		}
+		return ret;
+	}.bind(this.arg_tests);
+	this.arg_tests.f=function (server, words) {
+		return [parseFloat(words[0]), words.slice(1)];
+	}
+	this.arg_tests.c=function (server, words) {
+		var chantypes='#&';
+		try {
+			chantypes=server.isupport.CHANTYPES;
+		} catch(e) {}
+		if(chantypes.indexOf(words[0][0])<0) {
+			throw new Error('Not a valid channel.');
+		}
+		return [words[0], words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.u=function (server, words) {
+		//FIXME: RFC 1459 nick specs
+		return [words[0], words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.C=function (server, words) {
+		var ret=this.S(server, words);
+		if(ret[0].length<1) {
+			throw new Error('Not an existing/known channel.');
+		}
+		if(ret[0].length>1) {
+			throw new Error('Too many channels match; please be more specific.');
+		}
+		return [ret[0][0], ret[1]];
+	}.bind(this.arg_tests);
+	this.arg_tests.U=function (server, words) {
+		var ret=this.s(server, words);
+		if(ret[0].length<1) {
+			throw new Error('Not an existing/known user.');
+		}
+		if(ret[0].length>1) {
+			throw new Error('Too many users match; please be more specific.');
+		}
+		return [ret[0][0], ret[1]];
+	}.bind(this.arg_tests);
+	this.arg_tests.s=function (server, words) {
+		//Try a verbatim match first
+		if(server.hasUser(words[0])) {
+			return [[server.getOrCreateUser(words[0])], words.slice(1)];
+		}
+		//Do a regexp match
+		var re=new RegExp(words[0], 'g');
+		var res=[];
+		for(var nick in server.users) {
+			if(re.test(nick)) {
+				res.push(server.users[nick]);
+			}
+		}
+		return [res, words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.S=function (server, words) {
+		//Try a verbatim match first
+		if(server.hasChannel(words[0])) {
+			return [[server.getOrCreateChannel(words[0])], words.slice(1)];
+		}
+		//Do a regexp match
+		var re=new RegExp(words[0], 'g');
+		var res=[];
+		for(var name in server.channels) {
+			if(re.test(name)) {
+				res.push(server.channels[name]);
+			}
+		}
+		return [res, words.slice(1)];
+	}.bind(this.arg_tests);
+	this.arg_tests.r=function (server, words) {
+		return [words.join(' '), []];
+	}.bind(this.arg_tests);
+	
+	this.genArguments = function () {
+		var ret=[];
+		for(var i in this.params) {
+			ret.push(this.arg_names[this.params[i]]);
+		}
+		return ret.join(' ');
+	}.bind(this);
+	this.genHelp = function () {
+		var ret='';
+		if(this.module !== null) {
+			ret=ret+this.module+'.';
+		}
+		ret=ret+this.name;
+		if(this.aliases.length>0) {
+			ret=ret+' [Aliases: '+this.aliases.join(',')+']';
+		}
+		ret=ret+' '+this.genArguments()+' ';
+		if(this.perm !== null) {
+			ret=ret+'(Requires: '+this.perm+') ';
+		}
+		if(this.module !== null) {
+			ret=ret+'(Module: '+this.module+') ';
+		}
+		ret=ret+'- '+this.description;
+		return ret;
+	}.bind(this);
+	this.genNames = function () {
+		var arr=this.aliases.slice(0);
+		arr.unshift(this.name);
+		return arr;
+	}.bind(this);
+	
+	this.NOT_HANDLED=0;
+	this.HANDLED_OK=1;
+	this.HANDLED_ERROR=2;
+	this.call = function (server, words, invoker, target) {
+		var names=this.genNames();
+		var handled=false;
+		for(var i in names) {
+			if(words[0] === names[i]) {
+				handled=true;
+				words=words.slice(1);
+				break;
+			}
+		}
+		if(!handled) {
+			return this.NOT_HANDLED;
+		}
+		if(this.perm !== null && !server.authenticator.test(invoker, this.perm, target)) {
+			if(!this.failSilent) {
+				target.privmsg(server.authenticator.failMsg(this.perm));
+			}
+			return this.HANDLED_ERROR;
+		}
+		var args=[server, invoker, target];
+		var inoptional=false;
+		for(var i in this.params) {
+			if(this.params[i]=='o') {
+				inoptional=true;
+				continue;
+			}
+			if(words.length==0) {
+				if(inoptional) {
+					break;
+				} else {
+					target.privmsg('Not enough parameters given.');
+					return this.HANDLED_ERROR;
+				}
+			}
+			var validator=this.arg_tests[this.params[i]];
+			var ret=null;
+			try {
+				ret=validator(server, words);
+			} catch (e) {
+				target.privmsg('Error occured in parsing command parameters: '+e.message);
+				console.log('err', e.stack);
+				return this.HANDLED_ERROR;
+			}
+			args.push(ret[0]);
+			words=ret[1];
+		}
+		try {
+			this.callback.apply(this, args);
+		} catch (e) {
+			target.privmsg('Error occured in command execution: '+e.message);
+			console.log('err', e.stack);
+			return this.HANDLED_ERROR;
+		}
+		return this.HANDLED_OK;
+	}
+	
+	this.toString = function() {
+		return '<Command '+this.name+'('+this.params+')['+this.genNames().join(',')+']>';
+	}.bind(this);
+}

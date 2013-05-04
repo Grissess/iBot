@@ -1,0 +1,49 @@
+{
+  "name": "ibot",
+  "version": "0.3.3",
+  "description": "iBot is an IRC client-side framework designed to be extensible and easy to use",
+  "keywords": [
+    "ibot",
+    "irc",
+    "client",
+    "framework",
+    "bot"
+  ],
+  "author": {
+    "name": "Shockk",
+    "email": "shockk@green.shockk.co.uk",
+    "url": "https://github.com/ShockkPony/"
+  },
+  "contributors": [
+    {
+      "name": "Shockk",
+      "email": "shockk@green.shockk.co.uk",
+      "url": "https://github.com/ShockkPony/"
+    },
+    {
+      "name": "Jessica Williams",
+      "email": "quora@lavabit.com",
+      "url": "https://github.com/quora-wings/"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ShockkPony/iBot.git"
+  },
+  "main": "index",
+  "_id": "ibot@0.3.3",
+  "dependencies": {},
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "engines": {
+    "node": "*"
+  },
+  "_engineSupported": true,
+  "_npmVersion": "1.1.4",
+  "_nodeVersion": "v0.6.12",
+  "_defaultsLoaded": true,
+  "dist": {
+    "shasum": "59ad668395093c158b750aec1eb1094b0243c39c"
+  },
+  "_from": "ibot"
+}

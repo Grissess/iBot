@@ -1,0 +1,156 @@
+var Mode = require('./iBot-Mode.js');
+
+module.exports = function(server, name)
+{
+	this.server = server;
+	this.name = name;
+	this.topic = '';
+	this.users = {};
+	this.modes = {}; //this.name maps to an array of set channel Modes, any user nick maps to their channel-specific Modes.
+
+	this.data = {}; //Dynamic data to be stored by modules as needed--DO NOT EXPECT FORMATS TO REMAIN STABLE ACROSS
+	//REVISIONS, esp. if you don't own that module.
+	
+	this.isChannel=true; //To differentiate from other types of objects
+	this.isUser=false;
+	
+	this.toString = function () {
+		return '<Channel '+this.name+' on '+this.server+'>';
+	}
+	
+	//All _data functions modify the internal state of the channel. Only use them if you know what they do.
+	//Ideally, core should be the only user of these functions.
+	this._dataUserJoined = function (user) {
+		if(typeof this.modes[user.nick] !== 'undefined') {
+			this.modes[user.nick]=[];
+		}
+		this.users[user.nick]=user;
+	}.bind(this);
+	
+	this._dataUserParted = function (user) {
+		if(typeof this.modes[user.nick] !== 'undefined') {
+			delete this.modes[user.nick];
+		}
+		if(typeof this.users[user.nick] !== 'undefined') {
+			delete this.users[user.nick];
+		}
+	}.bind(this);
+	
+	this._dataUserNickChanged = function (user, newnick) {
+		if(this.hasUser(user)) {
+			this.users[newnick]=this.users[user.nick];
+			this.modes[newnick]=this.modes[user.nick];
+			delete this.users[user.nick];
+			delete this.modes[user.nick];
+		}
+	}
+	
+	this._dataModeSet = function (mode, state) {
+		if(state === 'undefined') {
+			state=true;
+		}
+		var target=this.name;
+		if(mode.param !== null) {
+			target=mode.param;
+		}
+		if(typeof this.modes[target] === 'undefined') {
+			this.modes[target]=[];
+		}
+		if(state) {
+			for(var i=0; i<this.modes[target].length; i++) {
+				if(this.modes[target][i].mode==mode.mode) {
+					this.modes[target][i]=mode;
+					return;
+				}
+			}
+			this.modes[target].push(mode);
+		} else {
+			for(var i=0; i<this.modes[target].length; i++) {
+				if(this.modes[target][i].mode==mode.mode) {
+					this.modes[target].splice(i, 1);
+					return;
+				}
+			}
+		}
+	}.bind(this);
+	
+	this.hasUser = function (user) {
+		if(typeof user !== 'string') {
+			user=user.nick;
+		}
+		return (typeof this.users[user] !== 'undefined');
+	}.bind(this);
+	
+	this.getOrCreateUser = function (nick, ident, host, realname) {
+		ident=(typeof ident === 'undefined'?null:ident);
+		host=(typeof host === 'undefined'?null:host);
+		realname=(typeof host === 'undefined'?null:realname);
+		if(typeof this.users[nick] === 'undefined') {
+			this.users[nick]=new User(this, nick, ident, host, realname);
+		}
+		return this.users[nick];
+	}.bind(this);
+
+	this.kick = function (user, comment) {
+		if(typeof user !== 'string') {
+			user = user.nick;
+		}
+		if(typeof comment === 'undefined') {
+			comment='Kicked';
+		}
+		this.server.send('KICK '+this.name+' '+user+' :'+comment);
+	}.bind(this);
+	
+	this.setMode = function (mode, state) {
+		if(typeof state === 'undefined') {
+			state=true;
+		}
+		var modestr=(state?'+':'-')+mode.mode
+		if(mode.param !== null) {
+			modestr=modestr+' '+mode.param;
+		}
+		this.server.send('MODE '+this.name+' '+modestr);
+	}.bind(this);
+	
+	this.BY_HOST=1;
+	this.BY_IDENT=2;
+	this.BY_NICK=4;
+	this.ban = function (user, by) {
+		if(typeof by === 'undefined') {
+			by=this.BY_HOST;
+		}
+		var mask=null;
+		if(typeof user === 'string') {
+			by=this.BY_NICK;
+			mask=user+'!*@*';
+		} else {
+			var nick=((by&this.BY_NICK)!=0?user.nick:'*');
+			var ident=((by&this.BY_IDENT)!=0?user.ident:'*');
+			var host=((by&this.BY_HOST)!=0?user.host:'*');
+			mask=nick+'!'+ident+'@'+host;
+		}
+		if(mask === '*!*@*') {
+			throw new Error('Banning everyone is an extremely bad idea! Check that your "by" parameter is properly set.');
+		}
+		this.setMode(new Mode('b', mask), true);
+		return mask;
+	}.bind(this);
+	
+	this.unban = function (mask) {
+		this.setMode(new Mode('b', mask), false);
+	}.bind(this);
+	
+	this.privmsg = function (msg) {
+		if(msg.length>512) {
+			msg='<<An oversized message was generated! If this is the result of a command, check for bugs or be more specific!>>';
+		}
+		this.server.send('PRIVMSG '+this.name+' :'+msg);
+	}.bind(this);
+	
+	this.notice = function (msg) {
+		if(msg.length>512) {
+			msg='<<An oversized message was generated! If this is the result of a command, check for bugs or be more specific!>>';
+		}
+		this.server.send('NOTICE '+this.name+' :'+msg);
+	}.bind(this);
+}

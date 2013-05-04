@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<todo version="0.1.20">
+    <note priority="veryhigh" time="1366178542" done="1366260863">
+        Fix TypeError with NICK handling
+        <comment>
+            Fixed with completon of RPL_NAMREPLY handling
+        </comment>
+    </note>
+    <note priority="veryhigh" time="1366258762" done="1366266459">
+        Fix execution time out bug in mod_sandbox
+    </note>
+    <note priority="veryhigh" time="1366516547" done="1366537223">
+        Issue PING every t seconds and timeout if PONG not received within t seconds
+    </note>
+    <note priority="veryhigh" time="1366519730" done="1366521913">
+        Fix leaking readline interfaces
+    </note>
+    <note priority="veryhigh" time="1366573990" done="1366577746">
+        Rewrite mod raw in hook format and commit all hook changes
+    </note>
+    <note priority="high" time="1366031670" done="1366033877">
+        Implement module unloading
+    </note>
+    <note priority="high" time="1366089840" done="1366101201">
+        Implement QUIT, NICK and KICK handlers
+    </note>
+    <note priority="high" time="1366099390" done="1366105874">
+        Escape outputted control codes to prevent exploits.
+    </note>
+    <note priority="high" time="1366405777" done="1366437921">
+        Add modules/ dir and include critical modules in the iBot package (like 'core')
+    </note>
+    <note priority="high" time="1366568857" done="1366710721">
+        Change activeModule to a stack to support recursive fires across multiple modules
+    </note>
+    <note priority="high" time="1366619295" done="1366640438">
+        [mod core] WHO handling
+    </note>
+    <note priority="high" time="1366706474" done="1366759028">
+        Add optional time interval param to Server.fire for timed events, and ability to change time interval after initial scheduling
+    </note>
+    <note priority="high" time="1366720485" done="1366730749">
+        Write an `auto` module which can be used to autojoin channels and do other actions on connect
+    </note>
+    <note priority="medium" time="1366032351" done="1366089947">
+        Implement channel and user tracking into mod_core
+    </note>
+    <note priority="medium" time="1366047270" done="1366069765">
+        Move js sandbox to separate module
+    </note>
+    <note priority="medium" time="1366094065" done="1366260906">
+        Finish implementing RPL_NAMREPLY handling
+    </note>
+    <note priority="medium" time="1366095898" done="1366175134">
+        Move !identof and !hostof to their own userinfo module
+    </note>
+    <note priority="medium" time="1366264512" done="1366396941">
+        Handle socket errors which occur from Excess Flood etc
+        <comment>
+            Tested and working
+        </comment>
+    </note>
+    <note priority="medium" time="1366405588" done="1366460064">
+        Write a basic README file for connecting and loading modules
+    </note>
+    <note priority="medium" time="1366517754" done="1366567298">
+        Add hooking system to allow modules to register callbacks that are dispatched to modules - e.g. exports.mod.core.myCallback()
+    </note>
+    <note priority="medium" time="1366704092" done="1366724055">
+        [README.md] Move Recent Changes to Change Log at bottom, above License
+    </note>
+    <note priority="low" time="1366160834" done="1366403918">
+        Add SSL support
+    </note>
+    <note priority="high" time="1366961626" done="1366977693">
+        Implement global event fires
+        <comment>
+            Also fixed memory leak in Server.recv from activeModuleStack never being popped
+        </comment>
+    </note>
+    <note priority="medium" time="1366619222">
+        ban list synching with the bot and the channel
+    </note>
+</todo>

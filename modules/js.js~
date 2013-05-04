@@ -1,0 +1,26 @@
+var vm=require('vm');
+var util=require('util');
+
+var Command=require('../iBot-Command.js');
+
+exports.mod = function(context)
+{
+	this.loaded = function (server) {}.bind(this);
+	this.unloaded = function (server) {}.bind(this);
+	
+	this.cmdJS = function (server, invoker, target, code) {
+		var res=eval(code);
+		target.privmsg('Result: '+util.inspect(res));
+	}
+	
+	this.cmdJSSafe = function (server, invoker, target, code) {
+		var res=vm.runInThisContext(code);
+		target.privmsg('Result: '+util.inspect(res));
+	}
+	
+	this.cmdJSClean = function (server, invoker, target, code) {
+		var sandbox={};
+		var res=vm.runInNewContext(code, sandbox);
+		target.privmsg('Result: '+util.inspect(res)+'; Sandbox: '+util.inspect(sandbox));
+	}
+}
